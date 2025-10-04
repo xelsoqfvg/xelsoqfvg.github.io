@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Roblox Game Info — Buscar por ID</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--accent:#0ea5a4;--muted:#94a3b8;color-scheme:dark}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;background:linear-gradient(180deg,#071026 0%,#091027 100%);color:#e6eef6;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+    .app{width:100%;max-width:980px}
+    header{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+    h1{font-size:20px;margin:0}
+    .card{background:rgba(255,255,255,0.03);padding:18px;border-radius:14px;box-shadow:0 6px 20px rgba(2,6,23,0.6)}
+    .controls{display:flex;gap:8px;align-items:center}
+    input[type=text]{flex:1;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.05);background:transparent;color:inherit;font-size:14px}
+    button{background:var(--accent);border:none;padding:10px 14px;border-radius:8px;color:#042024;font-weight:600;cursor:pointer}
+    .result{display:grid;grid-template-columns:140px 1fr;gap:16px;margin-top:16px}
+    .thumb{width:140px;height:140px;border-radius:8px;overflow:hidden;background:#0a1220;display:flex;align-items:center;justify-content:center}
+    .thumb img{width:100%;height:100%;object-fit:cover}
+    .meta h2{margin:0 0 6px 0}
+    .meta .sub{color:var(--muted);font-size:13px;margin-bottom:8px}
+    .badges{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .badge{background:rgba(255,255,255,0.03);padding:6px 8px;border-radius:999px;font-size:13px}
+    .gallery{display:flex;gap:8px;overflow:auto;margin-top:12px}
+    .gallery img{height:90px;border-radius:6px}
+    pre{background:#051024;padding:12px;border-radius:8px;color:#9fb9c3;overflow:auto}
+    footer{margin-top:12px;color:var(--muted);font-size:13px}
+    .hint{color:var(--muted);font-size:13px;margin-top:8px}
+    @media(max-width:640px){.result{grid-template-columns:1fr}.thumb{width:100%;height:200px}}
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div class="card" style="padding:12px 16px;display:flex;align-items:center;gap:12px">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden><path d="M3 12v7a1 1 0 0 0 1 1h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path><path d="M21 12v-7a1 1 0 0 0-1-1h-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <h1>Roblox Game Info (ID → detalhes)</h1>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="controls">
+        <input id="idInput" type="text" placeholder="Cole o ID do jogo (placeId ou universeId). Ex: 15531452066" />
+        <button id="fetchBtn">Buscar</button>
+      </div>
+      <div class="hint">Dica: cole o ID do jogo (qualquer número). O site tenta detectar se você forneceu um placeId ou universeId automaticamente.</div>
+
+      <div id="output" style="margin-top:14px"></div>
+
+      <footer>
+        Observação: este site usa as APIs públicas da Roblox (games.roblox.com, thumbnails.roblox.com, apis.roblox.com). Se alguma imagem não aparecer, pode ser por CORS ou porque o ID está incorreto.
+      </footer>
+    </section>
+  </main>
+
+<script>
+async function fetchJson(url){
+  const r = await fetch(url, {cache: 'no-store'});
+  if(!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+function el(tag, attrs = {}, ...children){
+  const e = document.createElement(tag);
+  for(const k in attrs){
+    if(k === 'html') e.innerHTML = attrs[k];
+    else e.setAttribute(k, attrs[k]);
+  }
+  children.flat().forEach(c => { if(c==null) return; if(typeof c === 'string') e.appendChild(document.createTextNode(c)); else e.appendChild(c); });
+  return e;
+}
+
+async function getUniverseFromPlace(placeId){
+  // endpoint: https://apis.roblox.com/universes/v1/places/{placeId}/universe
+  try{
+    const data = await fetchJson(`https://apis.roblox.com/universes/v1/places/${placeId}/universe`);
+    return data.universeId || null;
+  }catch(e){
+    return null;
+  }
+}
+
+async function getGameByUniverse(universeId){
+  // endpoint: https://games.roblox.com/v1/games?universeIds={id}
+  const url = `https://games.roblox.com/v1/games?universeIds=${universeId}`;
+  const data = await fetchJson(url);
+  if(Array.isArray(data.data) && data.data.length) return data.data[0];
+  return null;
+}
+
+async function getThumbnails(universeId){
+  // icons and banners
+  // icon (assets endpoint) and banners (games thumbnails)
+  try{
+    const iconsResp = await fetchJson(`https://thumbnails.roblox.com/v1/assets?assetIds=${universeId}&size=420x420&format=Png&isCircular=false`);
+    const bannersResp = await fetchJson(`https://thumbnails.roblox.com/v1/games/multiget/thumbnails?universeIds=${universeId}&countPerUniverse=5&format=Png&isCircular=false&size=420x140`);
+    return {icons: iconsResp.data || [], banners: (bannersResp.data && bannersResp.data[0] && bannersResp.data[0].thumbnails) || []};
+  }catch(e){
+    return {icons: [], banners: []};
+  }
+}
+
+function formatNumber(n){ return typeof n==='number' ? n.toLocaleString() : n; }
+
+async function renderResult(idRaw){
+  const out = document.getElementById('output'); out.innerHTML = '';
+  const id = idRaw.trim();
+  if(!id.match(/^\d+$/)){ out.appendChild(el('div', {html: '<strong>Erro:</strong> ID inválido — use apenas números.'})); return; }
+
+  const loading = el('div', {html: 'Buscando…'});
+  out.appendChild(loading);
+
+  try{
+    // Try as universeId first
+    let universeId = id;
+    let game = await getGameByUniverse(universeId);
+
+    if(!game){
+      // Try as placeId -> convert to universeId
+      const guessed = await getUniverseFromPlace(id);
+      if(guessed){
+        universeId = guessed;
+        game = await getGameByUniverse(universeId);
+      }
+    }
+
+    loading.remove();
+
+    if(!game){
+      out.appendChild(el('div', {html:'<strong>Jogo não encontrado.</strong> Verifique se o ID existe (pode ser placeId ou universeId).'}));
+      return;
+    }
+
+    // thumbnails
+    const thumbs = await getThumbnails(universeId);
+    const iconUrl = (thumbs.icons[0] && thumbs.icons[0].imageUrl) || null;
+    const bannerUrl = (thumbs.banners[0] && thumbs.banners[0].imageUrl) || null;
+
+    const grid = el('div', {class: 'result'});
+    const thumb = el('div', {class:'thumb'});
+    const img = el('img');
+    img.src = iconUrl || bannerUrl || 'https://www.roblox.com/asset-thumbnail/image?assetId='+game.rootPlaceId+'&width=420&height=420&format=png';
+    thumb.appendChild(img);
+
+    const meta = el('div', {class:'meta'});
+    meta.appendChild(el('h2', {}, game.name || '—'));
+    meta.appendChild(el('div', {class:'sub'}, game.description || 'Sem descrição'));
+
+    const badges = el('div', {class:'badges'});
+    badges.appendChild(el('div', {class:'badge'}, `UniverseId: ${game.universeId || universeId}`));
+    if(game.rootPlaceId) badges.appendChild(el('div', {class:'badge'}, `Root PlaceId: ${game.rootPlaceId}`));
+    if(game.playing) badges.appendChild(el('div', {class:'badge'}, `Jogando agora: ${formatNumber(game.playing)}`));
+    if(game.visits) badges.appendChild(el('div', {class:'badge'}, `Visitas: ${formatNumber(game.visits)}`));
+    if(game.maxPlayers) badges.appendChild(el('div', {class:'badge'}, `MaxPlayers: ${game.maxPlayers}`));
+    if(game.creator && game.creator.name) badges.appendChild(el('div', {class:'badge'}, `Criador: ${game.creator.name}`));
+
+    meta.appendChild(badges);
+
+    // gallery
+    const gallery = el('div', {class:'gallery'});
+    (thumbs.banners.length ? thumbs.banners : []).forEach(t => {
+      const i = el('img'); i.src = t.imageUrl; gallery.appendChild(i);
+    });
+
+    grid.appendChild(thumb);
+    grid.appendChild(meta);
+
+    out.appendChild(grid);
+
+    if(gallery.children.length) out.appendChild(el('div', {html:'<strong>Banners / imagens</strong>'}));
+    out.appendChild(gallery);
+
+    // raw json (collapsible)
+    const raw = el('details', {}, el('summary', {}, 'Mostrar JSON cru das APIs'), el('pre', {}, JSON.stringify({game, thumbnails: thumbs}, null, 2)));
+    out.appendChild(raw);
+
+  }catch(err){
+    loading.remove();
+    out.appendChild(el('div', {html: `<strong>Erro:</strong> ${err.message}`}));
+  }
+}
+
+document.getElementById('fetchBtn').addEventListener('click', ()=>{
+  const id = document.getElementById('idInput').value;
+  renderResult(id);
+});
+
+// allow Enter
+document.getElementById('idInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter') document.getElementById('fetchBtn').click(); });
+
+</script>
+</body>
+</html>
